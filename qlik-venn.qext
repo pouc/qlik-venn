@@ -1,0 +1,9 @@
+{
+	"name" : "qlik-venn",
+	"description" : "Venn diagram for Qlik Sense",
+	"icon" : "extension",
+	"type" : "visualization",
+	"version": "1.0",
+	"preview" : "table",
+	"author": "Loic Formont"
+}
