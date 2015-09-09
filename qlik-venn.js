@@ -157,7 +157,7 @@ var viz = function (id, width, height, $element, params) {
 	}).then(function(reply) {
 		
 		var retVal = [];
-		var sets;
+		var sets = [];
 			
 		if(
 			(reply.qHyperCube.qDimensionInfo[0].qStateCounts.qSelected ||
@@ -169,41 +169,81 @@ var viz = function (id, width, height, $element, params) {
 		} else {
 			
 			var dimValues = {};
-			sets = reply.qHyperCube.qDataPages[0].qMatrix.map(function(item, index) {
-				dimValues[index] = item[0];
-				return { sets: [ index ], label: item[0].qText, labels: [ item[0] ], size: item[1].qNum, dimValues: dimValues }
-			})
 			
-			var combs = combinaisons(
-					sets.map(function(item) {
-						return item.sets[0];
-					})
+			reply.qHyperCube.qDataPages[0].qMatrix.forEach(function(item, index) {
+				dimValues[index] = item[0];
+			});
+			
+			reply.qHyperCube.qDataPages[0].qMatrix.forEach(function(item, index) {
+
+				var comb = [ index ];
+			
+				var countCombExclude = generateSetAnalysis(
+					comb,
+					dimValues,
+					params.masterDim.qGroupFieldDefs[0],
+					params.slaveDim.qGroupFieldDefs[0],
+					true
 				)
-				.filter(function(item) {
-					return item.length > 1 && item.length <= 4;
-				});
-
-			combs.forEach(function(comb, index) {
 				
-				var countComb = comb.map(function(item) {
-					return dimValues[item].qText;
-				}).map(function(item) {
-					return '<[' + params.slaveDim.qGroupFieldDefs[0] + ']=P({<[' + params.masterDim.qGroupFieldDefs[0] + '] = {"' + item + '"}>} [' + params.slaveDim.qGroupFieldDefs[0] + '])>'
-				}).join(' * ')
-
 				var exprDef = {
-					size: {
-						qValueExpression : '=Count({' + countComb + '}  DISTINCT [' + params.slaveDim.qGroupFieldDefs[0] + '])'
-					},
-					measure: {
-						qValueExpression : '=Count({' + countComb + '}  DISTINCT [' + params.slaveDim.qGroupFieldDefs[0] + '])'
+					sizeExcl: {
+						qValueExpression : '=Count({' + countCombExclude + '}  DISTINCT [' + params.slaveDim.qGroupFieldDefs[0] + '])'
 					}
 				};
 				
 				var createGODef = Q.defer();
 				var expr = app.createGenericObject(exprDef, function(combReply) {
 
-					createGODef.resolve({ sets: comb, labels: comb.map(function(item) { return dimValues[item]; }), size: combReply.size, dimValues: dimValues });
+					createGODef.resolve({ sets: comb, label: item[0].qText + ' (' + combReply.sizeExcl + ')', labels: comb.map(function(item) { return dimValues[item]; }), size: item[1].qNum, sizeExcl: combReply.sizeExcl, dimValues: dimValues });
+					app.destroySessionObject(combReply.qInfo.qId);
+					
+				});
+				
+				retVal.push(createGODef.promise);
+
+			})
+			
+			var combs = combinaisons(
+					reply.qHyperCube.qDataPages[0].qMatrix.map(function(item, index) {
+						return index;
+					})
+				)
+				.filter(function(item) {
+					return item.length > 1;
+				});
+
+			combs.forEach(function(comb, index) {
+				
+				var countComb = generateSetAnalysis(
+					comb,
+					dimValues,
+					params.masterDim.qGroupFieldDefs[0],
+					params.slaveDim.qGroupFieldDefs[0],
+					false
+				);
+				
+				var countCombExclude = generateSetAnalysis(
+					comb,
+					dimValues,
+					params.masterDim.qGroupFieldDefs[0],
+					params.slaveDim.qGroupFieldDefs[0],
+					true
+				)
+
+				var exprDef = {
+					size: {
+						qValueExpression : '=Count({' + countComb + '}  DISTINCT [' + params.slaveDim.qGroupFieldDefs[0] + '])'
+					},
+					sizeExcl: {
+						qValueExpression : '=Count({' + countCombExclude + '}  DISTINCT [' + params.slaveDim.qGroupFieldDefs[0] + '])'
+					}
+				};
+				
+				var createGODef = Q.defer();
+				var expr = app.createGenericObject(exprDef, function(combReply) {
+
+					createGODef.resolve({ sets: comb, label: '' + combReply.sizeExcl, labels: comb.map(function(item) { return dimValues[item]; }), size: combReply.size, sizeExcl: combReply.sizeExcl, dimValues: dimValues });
 					app.destroySessionObject(combReply.qInfo.qId);
 					
 				});
@@ -310,22 +350,30 @@ function drawVenn(id, width, height, $element, sets, params) {
 		
 		.on("click", function(d) {
 			
-			var menu = [
-				{
-					title: 'Select',
-					action: function(elm, d, i) {
-						vennSelect(d, 0, $element, sets, params);
-					}
-				},
-				{
-					title: 'Select excluded',
-					action: function(elm, d, i) {
-						vennSelect(d, 1, $element, sets, params);
-					}
-				}
-			]
+			if(d.size > d.sizeExcl) {
 			
-			d3.contextMenu(menu)(d);
+				var menu = [
+					{
+						title: 'Select all (' + d.size + ')',
+						action: function(elm, d, i) {
+							vennSelect(d, 0, $element, sets, params);
+						}
+					},
+					{
+						title: 'Select only (' + d.sizeExcl + ')',
+						action: function(elm, d, i) {
+							vennSelect(d, 1, $element, sets, params);
+						}
+					}
+				]
+				
+				d3.contextMenu(menu)(d);
+			
+			} else {
+				
+				vennSelect(d, 0, $element, sets, params);
+				
+			}
 			
 		})
 	
@@ -340,7 +388,12 @@ function drawVenn(id, width, height, $element, sets, params) {
 				sets.filter(function(fItem) {
 					return sameElements(d.sets, fItem.sets)
 				})[0].labels.map(function(label) { return label.qText; }).join('<br />') + '<br /><br />' +
-				d.size + " " + params.slaveDim.qFallbackTitle + "(s)"
+				((d.size > d.sizeExcl) ? (
+					d.size + " " + params.slaveDim.qFallbackTitle + '(s) total<br />' +
+					d.sizeExcl + " " + params.slaveDim.qFallbackTitle + '(s) only'
+				) : (
+					d.size + " " + params.slaveDim.qFallbackTitle + '(s)'
+				))
 			);
 
 			// highlight the current path
@@ -352,7 +405,8 @@ function drawVenn(id, width, height, $element, sets, params) {
 				
 		})
 		
-		.on("mousemove", function() {
+		.on("mousemove", function(d) {
+			
 			tooltip.style("left", (d3.event.pageX) + "px")
 				   .style("top", (d3.event.pageY + 28) + "px");
 		})
@@ -369,6 +423,34 @@ function drawVenn(id, width, height, $element, sets, params) {
 }
 
 
+function generateSetAnalysis(set, dimValues, masterDim, slaveDim, exclude) {
+	
+	var count = set.map(function(item) {
+		return dimValues[item].qText;
+	}).map(function(item) {
+		return '<[' + slaveDim + ']=P({<[' + masterDim + '] = {"' + item + '"}>} [' + slaveDim + '])>'
+	})
+	
+	if(exclude) {
+		
+		Object.keys(dimValues).map(function(item) {
+			return parseInt(item);
+		}).filter(function(item) {
+			return set.indexOf(item) == -1;;
+		}).map(function(item) {
+			return dimValues[item].qText;
+		}).map(function(item) {
+			return '<[' + slaveDim + ']=E({<[' + masterDim + '] = {"' + item + '"}>} [' + slaveDim + '])>'
+		}).forEach(function(item) {
+			count.push(item);
+		})
+		
+	}
+	
+	return count.join(' * ');
+	
+}
+
 
 function vennSelect(d, mode, $element, sets, params) {
 	
@@ -383,36 +465,20 @@ function vennSelect(d, mode, $element, sets, params) {
 		
 		var dimValues = filterSet.dimValues;
 		
-		var count = filterSet.sets.map(function(item) {
-			return dimValues[item].qText;
-		}).map(function(item) {
-			return '<[' + params.slaveDim.qGroupFieldDefs[0] + ']=P({<[' + params.masterDim.qGroupFieldDefs[0] + '] = {"' + item + '"}>} [' + params.slaveDim.qGroupFieldDefs[0] + '])>'
-		})
-		
-		if(mode == 1) {
-			
-			Object.keys(dimValues).map(function(item) {
-				return parseInt(item);
-			}).filter(function(item) {
-				return filterSet.sets.indexOf(item) == -1;;
-			}).map(function(item) {
-				return dimValues[item].qText;
-			}).map(function(item) {
-				return '<[' + params.slaveDim.qGroupFieldDefs[0] + ']=E({<[' + params.masterDim.qGroupFieldDefs[0] + '] = {"' + item + '"}>} [' + params.slaveDim.qGroupFieldDefs[0] + '])>'
-			}).forEach(function(item) {
-				count.push(item);
-			})
-			
-		}
-		
-		console.log(count);
+		var countSetAnalysis = generateSetAnalysis(
+			filterSet.sets,
+			dimValues,
+			params.masterDim.qGroupFieldDefs[0],
+			params.slaveDim.qGroupFieldDefs[0],
+			mode == 1
+		);
 
 		var cubeDef = {
 			qDimensions: [
 				{ qDef: {qFieldDefs: [ params.slaveDim.qGroupFieldDefs[0] ]}, qNullSuppression: true }
 			], 
 			qMeasures: [
-				{ qDef: {qDef: '=Count({' + count.join(' * ') + '}  DISTINCT [' + params.masterDim.qGroupFieldDefs[0] + '])', qLabel: ""}}
+				{ qDef: {qDef: '=Count({' + countSetAnalysis + '}  DISTINCT [' + params.masterDim.qGroupFieldDefs[0] + '])', qLabel: ""}}
 			],
 			qInitialDataFetch: [{qHeight: 1000, qWidth: 2}]
 		};
