@@ -217,7 +217,7 @@ var viz = function (id, width, height, $element, params) {
 
 					createGODef.resolve({
 						sets: comb,
-						label: item[0].qText + ' (' + numeral(combReply.sizeExcl).format('0,0[.]0a') + ')',
+						label: item[0].qText + '<br>(' + numeral(combReply.sizeExcl).format('0,0[.]0a') + ')',
 						labels: comb.map(function(item) { return dimValues[item]; }),
 						size: item[1].qNum,
 						sizeExcl: combReply.sizeExcl,
