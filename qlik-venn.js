@@ -6,10 +6,32 @@ define([
 	"./lib/d3.min",
 	"./lib/lasso_adj",
 	"./lib/senseUtils",
-	"./lib/venn.min"
+	"./lib/venn.min",
+	"./lib/numeral"
 ], function($, cssContent, qlik, Q) {
 
 	'use strict';
+	
+	numeral.language('fr', {
+		delimiters: {
+			thousands: ' ',
+			decimal: ','
+		},
+		abbreviations: {
+			thousand: 'k',
+			million: 'm',
+			billion: 'b',
+			trillion: 't'
+		},
+		ordinal : function (number) {
+			return number === 1 ? 'er' : 'ème';
+		},
+		currency: {
+			symbol: '€'
+		}
+	});
+	
+	numeral.language('fr');
 	
 	d3.contextMenu = function (menu, openCallback) {
 
@@ -139,8 +161,6 @@ var viz = function (id, width, height, $element, params) {
 	
 	steps.then(function() {
 		
-		$element.html('');
-		
 		if($element.data('error') == 'true')
 			$element.html('');
 		
@@ -195,7 +215,15 @@ var viz = function (id, width, height, $element, params) {
 				var createGODef = Q.defer();
 				var expr = app.createGenericObject(exprDef, function(combReply) {
 
-					createGODef.resolve({ sets: comb, label: item[0].qText + ' (' + combReply.sizeExcl + ')', labels: comb.map(function(item) { return dimValues[item]; }), size: item[1].qNum, sizeExcl: combReply.sizeExcl, dimValues: dimValues });
+					createGODef.resolve({
+						sets: comb,
+						label: item[0].qText + ' (' + numeral(combReply.sizeExcl).format('0,0[.]0a') + ')',
+						labels: comb.map(function(item) { return dimValues[item]; }),
+						size: item[1].qNum,
+						sizeExcl: combReply.sizeExcl,
+						dimValues: dimValues
+					});
+					
 					app.destroySessionObject(combReply.qInfo.qId);
 					
 				});
@@ -243,7 +271,15 @@ var viz = function (id, width, height, $element, params) {
 				var createGODef = Q.defer();
 				var expr = app.createGenericObject(exprDef, function(combReply) {
 
-					createGODef.resolve({ sets: comb, label: '' + combReply.sizeExcl, labels: comb.map(function(item) { return dimValues[item]; }), size: combReply.size, sizeExcl: combReply.sizeExcl, dimValues: dimValues });
+					createGODef.resolve({
+						sets: comb,
+						label: '' + ((combReply.sizeExcl != 0) ? numeral(combReply.sizeExcl).format('0,0[.]0a') : ''),
+						labels: comb.map(function(item) { return dimValues[item]; }),
+						size: combReply.size,
+						sizeExcl: combReply.sizeExcl,
+						dimValues: dimValues
+					});
+						
 					app.destroySessionObject(combReply.qInfo.qId);
 					
 				});
@@ -354,13 +390,13 @@ function drawVenn(id, width, height, $element, sets, params) {
 			
 				var menu = [
 					{
-						title: 'Select all (' + d.size + ')',
+						title: 'Select all (' + numeral(d.size).format('0,0[.]0a') + ')',
 						action: function(elm, d, i) {
 							vennSelect(d, 0, $element, sets, params);
 						}
 					},
 					{
-						title: 'Select only (' + d.sizeExcl + ')',
+						title: 'Select only (' + numeral(d.sizeExcl).format('0,0[.]0a') + ')',
 						action: function(elm, d, i) {
 							vennSelect(d, 1, $element, sets, params);
 						}
@@ -389,8 +425,8 @@ function drawVenn(id, width, height, $element, sets, params) {
 					return sameElements(d.sets, fItem.sets)
 				})[0].labels.map(function(label) { return label.qText; }).join('<br />') + '<br /><br />' +
 				((d.size > d.sizeExcl) ? (
-					d.size + " " + params.slaveDim.qFallbackTitle + '(s) total<br />' +
-					d.sizeExcl + " " + params.slaveDim.qFallbackTitle + '(s) only'
+					numeral(d.size).format('0,0[.]0a') + " " + params.slaveDim.qFallbackTitle + '(s) total<br />' +
+					numeral(d.sizeExcl).format('0,0[.]0a') + " " + params.slaveDim.qFallbackTitle + '(s) only'
 				) : (
 					d.size + " " + params.slaveDim.qFallbackTitle + '(s)'
 				))
@@ -480,7 +516,7 @@ function vennSelect(d, mode, $element, sets, params) {
 			qMeasures: [
 				{ qDef: {qDef: '=Count({' + countSetAnalysis + '}  DISTINCT [' + params.masterDim.qGroupFieldDefs[0] + '])', qLabel: ""}}
 			],
-			qInitialDataFetch: [{qHeight: 1000, qWidth: 2}]
+			qInitialDataFetch: [{qHeight: 10000, qWidth: 1}]
 		};
 		
 		var steps = Q();
@@ -488,7 +524,7 @@ function vennSelect(d, mode, $element, sets, params) {
 		steps.then(function() {
 			
 			var createCubeDef = Q.defer();
-			app.createCube(cubeDef, function(reply) {
+			var obj = app.createCube(cubeDef, function(reply) {
 				createCubeDef.resolve(reply);
 			});
 			return createCubeDef.promise;
