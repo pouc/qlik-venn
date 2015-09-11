@@ -153,11 +153,8 @@ var viz = function (id, width, height, $element, params) {
 	var cubeDef = {
 		qDimensions : [
 			{ qDef : {qFieldDefs : [ params.masterDim.qGroupFieldDefs[0] ]}}
-		], 
-		qMeasures : [
-			{ qDef : {qDef : "COUNT(DISTINCT [" + params.slaveDim.qGroupFieldDefs[0] + "])", qLabel :""}}
 		],
-		qInitialDataFetch: [{qHeight: 8, qWidth: 2}]
+		qInitialDataFetch: [{qHeight: 8, qWidth: 1}]
 	};
 	
 	var steps = Q();
@@ -197,112 +194,77 @@ var viz = function (id, width, height, $element, params) {
 				dimValues[index] = item[0];
 			});
 			
-			reply.qHyperCube.qDataPages[0].qMatrix.forEach(function(item, index) {
-
-				var comb = [ index ];
+			var combsDef = combinaisons(
 			
-				var countCombExclude = generateSetAnalysis(
-					comb,
-					dimValues,
-					params.masterDim.qGroupFieldDefs[0],
-					params.slaveDim.qGroupFieldDefs[0],
-					true
-				)
+				reply.qHyperCube.qDataPages[0].qMatrix.map(function(item, index) {
+					return index;
+				})
 				
-				var exprDef = {
-					sizeExcl: {
-						qValueExpression : '=Count({' + countCombExclude + '}  DISTINCT [' + params.slaveDim.qGroupFieldDefs[0] + '])'
-					}
+			).map(function(comb, index) {
+				
+				return {
+					
+					comb: comb,
+					index: index,
+					
+					countComb: generateSetAnalysis(
+						comb,
+						dimValues,
+						params.masterDim.qGroupFieldDefs[0],
+						params.slaveDim.qGroupFieldDefs[0],
+						false
+					),
+				
+					countCombExclude: generateSetAnalysis(
+						comb,
+						dimValues,
+						params.masterDim.qGroupFieldDefs[0],
+						params.slaveDim.qGroupFieldDefs[0],
+						true
+					)
 				};
 				
-				var createGODef = Q.defer();
-				var expr = app.createGenericObject(exprDef, function(combReply) {
-
-					createGODef.resolve({
-						sets: comb,
-						label: item[0].qText + '<br>(' + numeral(combReply.sizeExcl).format('0,0[.]0a') + ')',
-						labels: comb.map(function(item) { return dimValues[item]; }),
-						size: item[1].qNum,
-						sizeExcl: combReply.sizeExcl,
-						dimValues: dimValues
-					});
+			}).map(function(combSA) {
+				
+				return {
 					
-					app.destroySessionObject(combReply.qInfo.qId);
-					
-				});
-				
-				retVal.push(createGODef.promise);
-
-			})
-			
-			var combs = combinaisons(
-					reply.qHyperCube.qDataPages[0].qMatrix.map(function(item, index) {
-						return index;
-					})
-				)
-				.filter(function(item) {
-					return item.length > 1;
-				});
-
-			combs.forEach(function(comb, index) {
-				
-				var countComb = generateSetAnalysis(
-					comb,
-					dimValues,
-					params.masterDim.qGroupFieldDefs[0],
-					params.slaveDim.qGroupFieldDefs[0],
-					false
-				);
-				
-				var countCombExclude = generateSetAnalysis(
-					comb,
-					dimValues,
-					params.masterDim.qGroupFieldDefs[0],
-					params.slaveDim.qGroupFieldDefs[0],
-					true
-				)
-
-				var exprDef = {
+					comb: combSA.comb,
+					index: combSA.index,
 					size: {
-						qValueExpression : '=Count({' + countComb + '}  DISTINCT [' + params.slaveDim.qGroupFieldDefs[0] + '])'
+						qValueExpression : '=Count({' + combSA.countComb + '}  DISTINCT [' + params.slaveDim.qGroupFieldDefs[0] + '])'
 					},
 					sizeExcl: {
-						qValueExpression : '=Count({' + countCombExclude + '}  DISTINCT [' + params.slaveDim.qGroupFieldDefs[0] + '])'
+						qValueExpression : '=Count({' + combSA.countCombExclude + '}  DISTINCT [' + params.slaveDim.qGroupFieldDefs[0] + '])'
 					}
+					
 				};
 				
-				var createGODef = Q.defer();
-				var expr = app.createGenericObject(exprDef, function(combReply) {
-
-					createGODef.resolve({
-						sets: comb,
-						label: '' + ((combReply.sizeExcl != 0) ? numeral(combReply.sizeExcl).format('0,0[.]0a') : ''),
-						labels: comb.map(function(item) { return dimValues[item]; }),
+			});
+			
+			
+			var combsDeferred = Q.defer();
+			var expr = app.createGenericObject({ combsDef: combsDef }, function(combsReply) {
+				
+				combsDeferred.resolve(combsReply.combsDef.map(function(combReply) {
+					
+					return {
+						sets: combReply.comb,
+						label: (combReply.comb.length == 1) ? dimValues[combReply.comb[0]].qText + ((combReply.sizeExcl) ? '<br>' + numeral(combReply.sizeExcl).format('0,0[.]0a') : '') : ((combReply.sizeExcl != 0) ? numeral(combReply.sizeExcl).format('0,0[.]0a') : ''),
+						labels: combReply.comb.map(function(item) { return dimValues[item]; }),
 						size: combReply.size,
 						sizeExcl: combReply.sizeExcl,
 						dimValues: dimValues
-					});
-						
-					app.destroySessionObject(combReply.qInfo.qId);
+					}
 					
-				});
+				}));
 				
-				retVal.push(createGODef.promise);
-			})
-
+				app.destroySessionObject(combsReply.qInfo.qId);
+				
+			});
+			
+			return combsDeferred.promise;
+			
 		}
-		
-		app.destroySessionObject(reply.qInfo.qId);
-		
-		return Q.all(retVal).then(function(combSets) {
-			
-			combSets.forEach(function(item) {
-				sets.push(item);
-			})
-			
-			return sets;
-			
-		})
 		
 		
 	}).then(function(sets) {
@@ -378,14 +340,6 @@ function drawVenn(id, width, height, $element, sets, params) {
 		.style("stroke-width", 0)
 
 	div.selectAll("g")
-		.on("mousewheel", function() {
-			
-			/*div.selectAll("g").sort(function (a, b) {
-				
-				return b.size - a.size;
-			});*/
-			
-		})
 		
 		.on("click", function(d) {
 			
