@@ -110,7 +110,10 @@ define([
 				settings : {
 					uses : "settings",
 					items : {						
+						size : {
 							
+							
+						}
 					}
 				}
 			}
@@ -122,7 +125,7 @@ define([
 		
 		paint : function($element, layout) {
 			
-			createVenn($element, layout, { Q: Q, qlik: qlik, self: this });
+			createVenn($element, layout, { Q: Q, qlik: qlik, self: this, mId: 1 });
 
 		}
 	};
@@ -516,32 +519,83 @@ function vennSelect(d, mode, $element, sets, params) {
 			qMeasures: [
 				{ qDef: {qDef: '=Count({' + countSetAnalysis + '}  DISTINCT [' + params.masterDim.qGroupFieldDefs[0] + '])', qLabel: ""}}
 			],
-			qInitialDataFetch: [{qHeight: 10000, qWidth: 1}]
+			qInitialDataFetch: [{qHeight: 0, qWidth: 2}]
 		};
 		
 		var steps = Q();
 
 		steps.then(function() {
+
+			var msg = {
+				"method":"CreateSessionObject",
+				"handle": 1,
+				"params":[{
+						"qHyperCubeDef": cubeDef,
+						"qInfo":{ "qType":"mashup", "qId": "MULFT" + params.mId++ }
+				}],
+				"jsonrpc":"2.0"
+			}
 			
-			var createCubeDef = Q.defer();
-			var obj = app.createCube(cubeDef, function(reply) {
-				createCubeDef.resolve(reply);
-			});
-			return createCubeDef.promise;
+			return params.self.backendApi.model.session.rpc(msg).then(function(d) { return d.result; });
+
 			
 		}).then(function(reply) {
 			
-			var pageDef = Q.defer();
-			senseUtils.pageExtensionData(params.self, $element, reply, function($el, layout, bigMatrix, me) {
-				pageDef.resolve(bigMatrix);
-			});
-			return pageDef.promise;
+			var msg = {
+				"method": "GetLayout",
+				"handle": reply.qReturn.qHandle,
+				"params": [],
+				"delta": true,
+				"jsonrpc": "2.0"
+			}
 			
-		}).then(function(bigMatrix) {
+			return Q.all([
+				reply.qReturn.qHandle,
+				params.self.backendApi.model.session.rpc(msg).then(function(d) { return d.result; })
+			])
 			
-			params.self.backendApi.selectValues(1, bigMatrix.map(function(item) {
-				return item[0].qElemNumber;
-			}), false);
+		}).then(function(reply) {
+			
+			var handle = reply[0];
+			var layout = reply[1].qLayout[0].value;
+			
+			var columns = layout.qHyperCube.qSize.qcx;
+			var totalheight = layout.qHyperCube.qSize.qcy;		
+			var pageheight = Math.floor(10000 / columns);
+			var numberOfPages = Math.ceil(totalheight / pageheight);
+						
+			var pages = Array.apply(null, Array(numberOfPages)).map(function(data, index) {
+
+				var msg = {
+					"method": "GetHyperCubeData",
+					"handle": handle,
+					"params":[
+						"/qHyperCubeDef", 
+						[{
+							qTop: (pageheight * index),
+							qLeft: 0,
+							qWidth: columns,
+							qHeight: pageheight
+						}]
+					], 
+					"jsonrpc":"2.0"
+				}
+
+				return params.self.backendApi.model.session.rpc(msg).then(function(d) { return d.result; });
+				
+			}, this);
+
+			return Q.all(pages);
+			
+		}).then(function(reply) {
+			
+			var selectionArray = reply.map(function(page) {
+				return page.qDataPages[0].qMatrix.map(function(row) {
+					return row[0].qElemNumber;
+				})
+			})
+
+			params.self.backendApi.selectValues(1, [].concat.apply([], selectionArray), false);
 			
 		}, function(message) {
 
