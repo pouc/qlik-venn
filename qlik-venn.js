@@ -10,7 +10,6 @@ define([
 	"./lib/numeral"
 ], function($, cssContent, qlik, Q) {
 
-	'use strict';
 	
 	numeral.language('fr', {
 		delimiters: {
@@ -479,81 +478,69 @@ function vennSelect(d, mode, $element, sets, params) {
 		var steps = Q();
 
 		steps.then(function() {
-
+			
+			$('<div class="venn-modal "></div>').appendTo($element);
+			
+		}).then(function(reply) {
+			
+			var id = "MULFT" + params.mId++;
+			
 			var msg = {
-				"method":"CreateSessionObject",
+				"method": "CreateSessionObject",
 				"handle": 1,
-				"params":[{
+				"params": [{
 						"qHyperCubeDef": cubeDef,
-						"qInfo":{ "qType":"mashup", "qId": "MULFT" + params.mId++ }
+						"qInfo":{ "qType":"mashup", "qId": id }
 				}],
 				"jsonrpc":"2.0"
 			}
 			
-			return params.self.backendApi.model.session.rpc(msg).then(function(d) { return d.result; });
+			return Q.all([
+				params.self.backendApi.model.session.rpc(msg).then(function(d) { return d.result; }),
+				id
+			]);
 
-			
 		}).then(function(reply) {
+			
+			var handle = reply[0].qReturn.qHandle;
+			var id = reply[1];
 			
 			var msg = {
-				"method": "GetLayout",
-				"handle": reply.qReturn.qHandle,
-				"params": [],
-				"delta": true,
-				"jsonrpc": "2.0"
+				"method": "RangeSelectHyperCubeValues",
+				"handle": handle,
+				"params": [
+					"/qHyperCubeDef",
+					[{
+						"qMeasureIx":0,
+						"qRange": { "qMin":1, "qMax":3, "qMinInclEq":true, "qMaxInclEq":true }
+					}],
+					[],
+					false
+				],
+				"jsonrpc":"2.0"
 			}
 			
-			return Q.all([
-				reply.qReturn.qHandle,
-				params.self.backendApi.model.session.rpc(msg).then(function(d) { return d.result; })
-			])
+			return  Q.all([
+				params.self.backendApi.model.session.rpc(msg).then(function(d) { return d.result; }),
+				id
+			]);
 			
 		}).then(function(reply) {
 			
-			var handle = reply[0];
-			var layout = reply[1].qLayout[0].value;
+			var id = reply[1];
 			
-			var columns = layout.qHyperCube.qSize.qcx;
-			var totalheight = layout.qHyperCube.qSize.qcy;		
-			var pageheight = Math.floor(10000 / columns);
-			var numberOfPages = Math.ceil(totalheight / pageheight);
-						
-			var pages = Array.apply(null, Array(numberOfPages)).map(function(data, index) {
-
-				var msg = {
-					"method": "GetHyperCubeData",
-					"handle": handle,
-					"params":[
-						"/qHyperCubeDef", 
-						[{
-							qTop: (pageheight * index),
-							qLeft: 0,
-							qWidth: columns,
-							qHeight: pageheight
-						}]
-					], 
-					"jsonrpc":"2.0"
-				}
-
-				return params.self.backendApi.model.session.rpc(msg).then(function(d) { return d.result; });
-				
-			}, this);
-
-			return Q.all(pages);
+			var msg = {
+				"method":"DestroySessionObject",
+				"handle":1,
+				"params":[ id ],
+				"jsonrpc":"2.0"
+			}
 			
-		}).then(function(reply) {
+			return params.self.backendApi.model.session.rpc(msg).then(function(d) { return d.result; })
 			
-			var selectionArray = reply.map(function(page) {
-				return page.qDataPages[0].qMatrix.map(function(row) {
-					return row[0].qElemNumber;
-				})
-			})
-
-			params.self.backendApi.selectValues(1, [].concat.apply([], selectionArray), false);
+		}).then(function() {
 			
-		}, function(message) {
-
-			console.log(message);
+			$('.venn-modal').remove();
 			
 		});
 		
