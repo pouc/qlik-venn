@@ -152,6 +152,7 @@ var viz = function (id, width, height, $element, params) {
 		qDimensions : [
 			{ qDef : {qFieldDefs : [ params.masterDim.qGroupFieldDefs[0] ]}}
 		],
+		qInterColumnSortOrder : [0,1],
 		qInitialDataFetch: [{qHeight: 8, qWidth: 1}]
 	};
 	
@@ -471,6 +472,7 @@ function vennSelect(d, mode, $element, sets, params) {
 			qMeasures: [
 				{ qDef: {qDef: '=Count({' + countSetAnalysis + '}  DISTINCT [' + params.masterDim.qGroupFieldDefs[0] + '])', qLabel: ""}}
 			],
+			qInterColumnSortOrder : [0,1],
 			qInitialDataFetch: [{qHeight: 0, qWidth: 2}]
 		};
 		
