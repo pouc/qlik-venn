@@ -8,7 +8,7 @@ define([
 	"./lib/senseUtils",
 	"./lib/venn.min",
 	"./lib/numeral"
-], function($, cssContent, qlik, Q,) {
+], function($, cssContent, qlik, Q) {
 
 	numeral.language('fr', {
 		delimiters: {
@@ -44,7 +44,7 @@ define([
 			d3.select('.d3-context-menu').style('display', 'none');
 		});
 
-		// this gets executed when a contextmenu event occurs
+		// this gets executed when a context menu event occurs
 		return function(data, index) {
 			var elm = this;
 
@@ -61,7 +61,7 @@ define([
 				});
 
 			// the openCallback allows an action to fire before the menu is displayed
-			// an example usage would be closing a tooltip
+			// an example usage would be closing a tool tip
 			if (openCallback) {
 				if (openCallback(data, index) === false) {
 					return;
@@ -94,6 +94,7 @@ define([
 					min : 2,
 					max: 2
 				},
+				// YB 15/03/2018 : TBS Unused measures ?
 				measures : {
 					uses : "measures",
 					min : 0,
@@ -106,25 +107,18 @@ define([
 					uses : "addons"
 				},
 				settings : {
-					uses : "settings",
-					items : {						
-						size : {
-							
-							
-						}
-					}
+					uses : "settings"
+					// YB 15/03/2018 : Removed unused settings
 				}
 			}
 		},
-		
+
 		snapshot : {
 			canTakeSnapshot : true
 		},
-		
-		paint : function($element, layout) {
-			
-			createVenn($element, layout, { Q: Q, qlik: qlik, self: this, mId: 1 });
 
+		paint : function($element, layout) {
+			createVenn($element, layout, { Q: Q, qlik: qlik, self: this, mId: 1 });
 		}
 	};
 });
@@ -138,16 +132,16 @@ function createVenn($element, layout, params) {
 	params.masterDim = layout.qHyperCube.qDimensionInfo[0]; // qFallbackTitle;
 	params.slaveDim = layout.qHyperCube.qDimensionInfo[1];
 	params.measure = (typeof layout.qHyperCube.qMeasureInfo[0] != 'undefined') ? layout.qHyperCube.qMeasureInfo[0].qFallbackTitle : undefined;
-	
+
 	viz(id, width, height, $element, params);
 
 }
 
 var viz = function (id, width, height, $element, params) {
-	
+
 	var app = params.qlik.currApp();
 	var Q = params.Q;
-	
+
 	var cubeDef = {
 		qDimensions : [
 			{ qDef : {qFieldDefs : [ params.masterDim.qGroupFieldDefs[0] ]}}
@@ -155,57 +149,56 @@ var viz = function (id, width, height, $element, params) {
 		qInterColumnSortOrder : [0,1],
 		qInitialDataFetch: [{qHeight: 8, qWidth: 1}]
 	};
-	
+
 	var steps = Q();
-	
+
 	steps.then(function() {
-		
+
 		if($element.data('error') == 'true')
 			$element.html('');
-		
 		$element.data('error') == 'false'
-		
+
 	}).then(function() {
-		
+
 		var createCubeDef = Q.defer();
 		app.createCube(cubeDef, function(reply) {
 			createCubeDef.resolve(reply);
 		});
 		return createCubeDef.promise;
-		
+
 	}).then(function(reply) {
-		
+
 		var retVal = [];
 		var sets = [];
-			
-		if(
+
+		if (
 			(reply.qHyperCube.qDimensionInfo[0].qStateCounts.qSelected ||
 			reply.qHyperCube.qDimensionInfo[0].qStateCounts.qOption) > 8
 		) {
-			
+
 			return Q.reject('Too many values for ' + params.masterDim.qGroupFieldDefs[0]);
-			
+
 		} else {
-			
+
 			var dimValues = {};
-			
+
 			reply.qHyperCube.qDataPages[0].qMatrix.forEach(function(item, index) {
 				dimValues[index] = item[0];
 			});
-			
+
 			var combsDef = combinaisons(
-			
+
 				reply.qHyperCube.qDataPages[0].qMatrix.map(function(item, index) {
 					return index;
 				})
-				
+
 			).map(function(comb, index) {
-				
+
 				return {
-					
+
 					comb: comb,
 					index: index,
-					
+
 					countComb: generateSetAnalysis(
 						comb,
 						dimValues,
@@ -213,7 +206,7 @@ var viz = function (id, width, height, $element, params) {
 						params.slaveDim.qGroupFieldDefs[0],
 						false
 					),
-				
+
 					countCombExclude: generateSetAnalysis(
 						comb,
 						dimValues,
@@ -222,11 +215,11 @@ var viz = function (id, width, height, $element, params) {
 						true
 					)
 				};
-				
+
 			}).map(function(combSA) {
-				
+
 				return {
-					
+
 					comb: combSA.comb,
 					index: combSA.index,
 					size: {
@@ -235,17 +228,16 @@ var viz = function (id, width, height, $element, params) {
 					sizeExcl: {
 						qValueExpression : '=Count({' + combSA.countCombExclude + '}  DISTINCT [' + params.slaveDim.qGroupFieldDefs[0] + '])'
 					}
-					
+
 				};
-				
+
 			});
-			
-			
+
 			var combsDeferred = Q.defer();
 			var expr = app.createGenericObject({ combsDef: combsDef }, function(combsReply) {
-				
+
 				combsDeferred.resolve(combsReply.combsDef.map(function(combReply) {
-					
+
 					return {
 						sets: combReply.comb,
 						label: (combReply.comb.length == 1) ? dimValues[combReply.comb[0]].qText + ((combReply.sizeExcl) ? '<br>' + numeral(combReply.sizeExcl).format('0,0[.]0a') : '') : ((combReply.sizeExcl != 0) ? numeral(combReply.sizeExcl).format('0,0[.]0a') : ''),
@@ -254,29 +246,28 @@ var viz = function (id, width, height, $element, params) {
 						sizeExcl: combReply.sizeExcl,
 						dimValues: dimValues
 					}
-					
+
 				}));
-				
+
 				app.destroySessionObject(combsReply.qInfo.qId);
-				
+
 			});
-			
+
 			return combsDeferred.promise;
-			
+
 		}
-		
-		
+
 	}).then(function(sets) {
-		
+
 		drawVenn(id, width, height, $element, sets, params);
 		$element.data('error', 'false');
-		
+
 	}, function(message) {
-		
+
 		$element.html(message);
 		$element.data('error', 'true');
-		
-	})	
+
+	})
 }
 
 function sameElements(a, b) {
@@ -308,7 +299,7 @@ function combinaisons(a) {
 }
 
 function drawVenn(id, width, height, $element, sets, params) {
-	
+
 	var app = params.qlik.currApp();
 	var Q = params.Q;
 
@@ -316,22 +307,25 @@ function drawVenn(id, width, height, $element, sets, params) {
 
 	var chart = venn.VennDiagram()
 		.width(width)
-		.height(height);
+		.height(height)
+	;
 
-	var div = d3.select("#" + id)
-	
+	var div = d3.select("#" + id);
+
 	try {
+		// YB 15/03/2018 : No need to draw empty sets
+		sets = sets.filter(set => set.size > 0);
 		div.datum(sets).call(chart);
 	} catch(e) {
+		// YB 15/03/2018 console.log(e);
 		$element.html('Not possible to draw venn diagram!');
 		$element.data('error', 'true');
 	}
-	
+
 	$("div.venntooltip").remove();
-	
+
 	var tooltip = d3.select("body").append("div")
 		.attr("class", "venntooltip");
-		
 
 	div.selectAll("path")
 		.style("stroke-opacity", 0)
@@ -339,11 +333,11 @@ function drawVenn(id, width, height, $element, sets, params) {
 		.style("stroke-width", 0)
 
 	div.selectAll("g")
-		
+
 		.on("click", function(d) {
-			
+
 			if(d.size > d.sizeExcl) {
-			
+
 				var menu = [
 					{
 						title: 'Select all (' + numeral(d.size).format('0,0[.]0a') + ')',
@@ -358,23 +352,23 @@ function drawVenn(id, width, height, $element, sets, params) {
 						}
 					}
 				]
-				
+
 				d3.contextMenu(menu)(d);
-			
+
 			} else {
-				
+
 				vennSelect(d, 0, $element, sets, params);
-				
+
 			}
-			
+
 		})
-	
+
 		.on("mouseover", function(d, i) {
-			
+
 			// sort all the areas relative to the current item
 			venn.sortAreas(div, d);
 
-			// Display a tooltip with the current size
+			// Display a tool tip with the current size
 			tooltip.transition().duration(400).style("opacity", .9);
 			tooltip.html(
 				sets.filter(function(fItem) {
@@ -393,14 +387,14 @@ function drawVenn(id, width, height, $element, sets, params) {
 			selection.select("path")
 				.style("stroke-width", 3)
 				.style("fill-opacity", d.sets.length == 1 ? .4 : .1)
-				.style("stroke-opacity", 1);
-				
+				.style("stroke-opacity", 1)
+			;
+
 		})
-		
+
 		.on("mousemove", function(d) {
-			
 			tooltip.style("left", (d3.event.pageX) + "px")
-				   .style("top", (d3.event.pageY + 28) + "px");
+				.style("top", (d3.event.pageY + 28) + "px");
 		})
 
 		.on("mouseout", function(d, i) {
@@ -414,17 +408,15 @@ function drawVenn(id, width, height, $element, sets, params) {
 
 }
 
-
 function generateSetAnalysis(set, dimValues, masterDim, slaveDim, exclude) {
-	
+
 	var count = set.map(function(item) {
 		return dimValues[item].qText;
 	}).map(function(item) {
 		return '<[' + slaveDim + ']=P({<[' + masterDim + '] = {"' + item + '"}>} [' + slaveDim + '])>'
 	})
-	
+
 	if(exclude) {
-		
 		Object.keys(dimValues).map(function(item) {
 			return parseInt(item);
 		}).filter(function(item) {
@@ -436,27 +428,25 @@ function generateSetAnalysis(set, dimValues, masterDim, slaveDim, exclude) {
 		}).forEach(function(item) {
 			count.push(item);
 		})
-		
 	}
-	
+
 	return count.join(' * ');
-	
+
 }
 
-
 function vennSelect(d, mode, $element, sets, params) {
-	
+
 	var app = params.qlik.currApp();
 	var Q = params.Q;
-	
+
 	var filterSet = sets.filter(function(fItem) {
 		return sameElements(d.sets, fItem.sets)
 	})[0];
-	
+
 	if(typeof filterSet != 'undefined') {
-		
+
 		var dimValues = filterSet.dimValues;
-		
+
 		var countSetAnalysis = generateSetAnalysis(
 			filterSet.sets,
 			dimValues,
@@ -475,23 +465,28 @@ function vennSelect(d, mode, $element, sets, params) {
 			qInterColumnSortOrder : [0,1],
 			qInitialDataFetch: [{qHeight: 0, qWidth: 2}]
 		};
-		
+
 		var steps = Q();
 
 		steps.then(function() {
-			
+
 			$('<div class="venn-modal "></div>').appendTo($element);
-			
+
 		}).then(function(reply) {
-			
+
 			var id = "MULFT" + params.mId++;
-			
+
 			var app=params.qlik.currApp();
 
 			return Q.all( [
 				app.model.enigmaModel.createSessionObject({
 					 "qHyperCubeDef":  cubeDef,
-					 "qInfo":{ "qType":"mashup", "qId": id }
+					 // YB 15/03/2018 Mandatory ?
+					 "qExtendsId": "", 
+					 "qInfo":{
+						 "qType":"mashup",
+						 "qId": id 
+					}
 				}).then(function(m){
 					return m;
 				}),
@@ -500,20 +495,29 @@ function vennSelect(d, mode, $element, sets, params) {
 			)
 		}).then(function(reply) {
 			return Q.all([
-				reply[0].enigmaModel.rangeSelectHyperCubeValues("/qHyperCubeDef",[{
-				"qMeasureIx":0,
-				  "qRange": { "qMin":1, "qMax":3, "qMinInclEq":true, "qMaxInclEq":true }
-				}],[],false
+				// YB 15/03/2018
+				//reply[0].enigmaModel.rangeSelectHyperCubeValues(
+				reply[0].rangeSelectHyperCubeValues(
+					"/qHyperCubeDef",
+					[{
+						"qMeasureIx":0,
+						"qRange": { "qMin":1, "qMax":3, "qMinInclEq":true, "qMaxInclEq":true }
+					}],
+					[],
+					false
 				).then(function(mm){
 					return mm;
-				})
-			,reply[1],reply[0]])
-			
+				}),
+				reply[1],
+				reply[0]
+			])
 		}).then(function(reply){
-			reply[2].app.enigmaModel.destroySessionObject(reply[1]);
+			// YB 15/03/2018
+			//reply[2].app.enigmaModel.destroySessionObject(reply[1]);
+			reply[2].app.destroySessionObject(reply[1]);
 			$('.venn-modal').remove();
 		})
-		
+
 	}
-	
+
 }
