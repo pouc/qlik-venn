@@ -26,6 +26,8 @@ Thanks to Alexander Karlsson (https://github.com/mindspank/) & Ingemar Carlo for
 
 Thanks to Xavier Le Pitre for the business case
 
+Thanks to Yves Blake (https://github.com/yblake) for cleanup & bug correction
+
 # License
 
 The MIT License (MIT)
